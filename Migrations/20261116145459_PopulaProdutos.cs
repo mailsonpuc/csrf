@@ -20,7 +20,7 @@ namespace ApiCookieHttpOnly.Migrations
                     GETDATE(),
                     (SELECT CategoriaId FROM Categorias WHERE Nome = 'Bebidas')
                 )");
-            
+
             migrationBuilder.Sql(@"
                 INSERT INTO Produtos(ProdutoId, Nome, Descricao, Preco, ImagemUrl, Estoque, DataCadastro, CategoriaId)
                 VALUES (

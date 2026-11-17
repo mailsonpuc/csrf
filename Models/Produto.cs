@@ -6,31 +6,31 @@ namespace ApiCookieHttpOnly.Models;
 public class Produto
 {
     public Guid ProdutoId { get; set; }
-    
+
     [Required]
     [StringLength(80)]
     public string Nome { get; set; }
-    
+
     [Required]
     [StringLength(300)]
     public string Descricao { get; set; }
-    
+
     [Required]
     [Column(TypeName = "decimal(10,2)")]
     public decimal Preco { get; set; }
-    
-    
+
+
     [Required]
     [StringLength(300)]
     public string ImagemUrl { get; set; }
-    
-    
+
+
     public float Estoque { get; set; }
     public DateTime DataCadastro { get; set; }
-    
-    
+
+
     //FK da categoria
     public Guid CategoriaId { get; set; }
     public Categoria? Categoria { get; set; } // propiedade de navegaçao
-    
+
 }
