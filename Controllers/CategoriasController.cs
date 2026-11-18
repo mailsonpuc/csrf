@@ -1,5 +1,6 @@
 using ApiCookieHttpOnly.Context;
 using ApiCookieHttpOnly.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,26 +22,28 @@ public class CategoriasController: ControllerBase
 
 
     [HttpGet("CategoriasComProdutos")]
-    public ActionResult<IEnumerable<Categoria>> GetCategoriaComProdutos()
+    public async Task<ActionResult<IEnumerable<Categoria>>> GetCategoriaComProdutos()
     {
-        return _Context.Categorias.
+        return await _Context.Categorias.
             Include(p => p.Produtos)
             .AsNoTracking()
-            .ToList();
+            .ToListAsync();
     }
     
     
     [HttpGet]
+    [Authorize]
     public ActionResult<IEnumerable<Categoria>> Get()
     {
         var categorias = _Context.Categorias.AsNoTracking().ToList();
-        /*
+       
         if (categorias == null)
         {
             return NotFound("Categoias not found");
         }
         return categorias;
-        */
+        
+        /*
         try
         {
             throw new ConnectionAbortedException();
@@ -49,6 +52,7 @@ public class CategoriasController: ControllerBase
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "Ocorreu um erro inesperado");
         }
+        */
        
     }
 

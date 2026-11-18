@@ -1,6 +1,7 @@
 using ApiCookieHttpOnly.Context;
 using ApiCookieHttpOnly.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 
 namespace ApiCookieHttpOnly.Controllers;
@@ -19,9 +20,9 @@ public class ProdutosController : ControllerBase
     }
 
     [HttpGet]
-    public ActionResult<IEnumerable<Produto>> Get()
+    public async Task< ActionResult<IEnumerable<Produto>>> Get()
     {
-        var produtos = _Context.Produtos.AsNoTracking().ToList();
+        var produtos = await _Context.Produtos.AsNoTracking().ToListAsync();
         if (produtos == null)
         {
             return NotFound("Produtos not found");
@@ -31,9 +32,11 @@ public class ProdutosController : ControllerBase
 
 
     [HttpGet("{id:guid}",  Name = "ObterProduto")]
-    public ActionResult<Produto> Get(Guid id)
+    public async Task<ActionResult<Produto>> Get(Guid id,[BindRequired] string nome)
     {
-        var produto = _Context.Produtos.FirstOrDefault(p => p.ProdutoId == id);
+        var nomeProduto = nome;
+        
+        var produto = await _Context.Produtos.FirstOrDefaultAsync(p => p.ProdutoId == id);
         if (produto == null)
         {
             return NotFound("Nao encontrado");

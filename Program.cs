@@ -39,6 +39,12 @@ builder.Services.AddOpenApiDocument(options =>
     };
 });
 
+
+// servico de jwt
+builder.Services.AddAuthentication("Bearer").AddJwtBearer();
+
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

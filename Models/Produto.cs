@@ -5,10 +5,11 @@ namespace ApiCookieHttpOnly.Models;
 
 public class Produto
 {
+    [Key]
     public Guid ProdutoId { get; set; }
 
-    [Required]
-    [StringLength(80)]
+    [Required(ErrorMessage = "O nome é obrigatorio")]
+    [StringLength(10, ErrorMessage = "O nome deve conter entre 20 e 4 caracteres", MinimumLength = 4)]
     public string Nome { get; set; }
 
     [Required]
