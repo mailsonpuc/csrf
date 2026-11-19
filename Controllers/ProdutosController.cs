@@ -1,5 +1,6 @@
 using ApiCookieHttpOnly.Context;
 using ApiCookieHttpOnly.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,7 @@ namespace ApiCookieHttpOnly.Controllers;
 
 
 [Route("api/[controller]")]
+[Authorize]
 [ApiController]
 public class ProdutosController : ControllerBase
 {

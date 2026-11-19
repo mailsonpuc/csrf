@@ -9,6 +9,7 @@ namespace ApiCookieHttpOnly.Controllers;
 
 
 [Route("api/[controller]")]
+[Authorize]
 [ApiController]
 public class CategoriasController: ControllerBase
 { 
@@ -32,7 +33,6 @@ public class CategoriasController: ControllerBase
     
     
     [HttpGet]
-    [Authorize]
     public ActionResult<IEnumerable<Categoria>> Get()
     {
         var categorias = _Context.Categorias.AsNoTracking().ToList();
