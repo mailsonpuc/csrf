@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using NSwag;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,31 +33,8 @@ builder.Services.AddAntiforgery(options =>
         : CookieSecurePolicy.Always;
 });
 
-// Configura o NSwag (OpenAPI + Swagger UI)
-builder.Services.AddOpenApiDocument(options =>
-{
-    options.PostProcess = document =>
-    {
-        document.Info = new OpenApiInfo
-        {
-            Version = "v1",
-            Title = "Catálogo API",
-            Description = "API para gerenciamento de Categorias e Produtos",
-            TermsOfService = "https://example.com/terms",
-            Contact = new OpenApiContact
-            {
-                Name = "Example Contact",
-                Url = "https://example.com/contact"
-            },
-            License = new OpenApiLicense
-            {
-                Name = "Example License",
-                Url = "https://example.com/license"
-            }
-        };
-    };
-
-});
+// OpenAPI document consumed by Scalar.
+builder.Services.AddOpenApi();
 
 // Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
@@ -98,11 +75,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    // Gera o JSON em: /swagger/v1/swagger.json
-    app.UseOpenApi();
-
-    // Interface visual em: /swagger
-    app.UseSwaggerUi();
+    app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 app.UseHttpsRedirection();
