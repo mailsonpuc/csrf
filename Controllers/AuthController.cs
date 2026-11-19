@@ -6,9 +6,13 @@ using ApiCookieHttpOnly.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 
 namespace ApiCookieHttpOnly.Controllers;
 
+/// <summary>
+/// Gerencia autenticação, contas de usuário, funções e ciclo de vida dos tokens JWT.
+/// </summary>
 [Route("api/[controller]")]
 [ApiController]
 public class AuthController : ControllerBase
@@ -38,6 +42,11 @@ public class AuthController : ControllerBase
     
     
     
+    /// <summary>
+    /// Cria uma função (role) se ela ainda não existir.
+    /// </summary>
+    /// <param name="roleName">Nome da função a criar.</param>
+    /// <returns>Resultado da criação ou uma mensagem informando que a função já existe.</returns>
     [HttpPost]
     [Route("CreateRole")]
     public async Task<IActionResult> CreateRole(string roleName)
@@ -67,6 +76,12 @@ public class AuthController : ControllerBase
           new Response { Status = "Error", Message = "Role already exist." });
     }
 
+    /// <summary>
+    /// Adiciona um usuário existente a uma função.
+    /// </summary>
+    /// <param name="email">E-mail do usuário.</param>
+    /// <param name="roleName">Nome da função.</param>
+    /// <returns>Resultado da operação.</returns>
     [HttpPost]
     [Route("AddUserToRole")]
     public async Task<IActionResult> AddUserToRole(string email, string roleName)
@@ -98,6 +113,11 @@ public class AuthController : ControllerBase
 
     
     
+    /// <summary>
+    /// Autentica um usuário e emite um token de acesso JWT e um refresh token.
+    /// </summary>
+    /// <param name="model">Nome de usuário e senha.</param>
+    /// <returns>Tokens e horário de expiração do token de acesso.</returns>
     [HttpPost]
     [Route("login")]
     public async Task<IActionResult> Login([FromBody] LoginModel model)
@@ -149,6 +169,11 @@ public class AuthController : ControllerBase
     
     
     
+    /// <summary>
+    /// Cria uma nova conta de usuário.
+    /// </summary>
+    /// <param name="model">Dados necessários para registrar a conta.</param>
+    /// <returns>Resultado do cadastro.</returns>
     [HttpPost]
     [Route("register")]
     public async Task<IActionResult> Register([FromBody] RegisterModel model)
@@ -178,34 +203,44 @@ public class AuthController : ControllerBase
         return Ok(new Response { Status = "Success", Message = "User created successfully!" });
     }
 
+    /// <summary>
+    /// Valida um access token expirado e um refresh token, e emite um novo par de tokens.
+    /// O refresh token anterior é invalidado após a rotação.
+    /// </summary>
+    /// <param name="tokenModel">Access token anterior e refresh token válido.</param>
+    /// <returns>Novo access token e novo refresh token.</returns>
     [HttpPost]
     [Route("refresh-token")]
-    public async Task<IActionResult> RefreshToken(TokenModel tokenModel)
+    public async Task<IActionResult> RefreshToken([FromBody] TokenModel? tokenModel)
     {
-
-        if (tokenModel is null)
+        if (string.IsNullOrWhiteSpace(tokenModel?.AccessToken)
+            || string.IsNullOrWhiteSpace(tokenModel.RefreshToken))
         {
             return BadRequest("Invalid client request");
         }
 
-        string? accessToken = tokenModel.AccessToken
-                              ?? throw new ArgumentNullException(nameof(tokenModel));
-
-        string? refreshToken = tokenModel.RefreshToken
-                               ?? throw new ArgumentException(nameof(tokenModel));
-
-        var principal = _tokenService.GetPrincipalFromExpiredToken(accessToken!, _configuration);
-
-        if (principal == null)
+        ClaimsPrincipal principal;
+        try
+        {
+            principal = _tokenService.GetPrincipalFromExpiredToken(
+                tokenModel.AccessToken, _configuration);
+        }
+        catch (SecurityTokenException)
+        {
+            return BadRequest("Invalid access token/refresh token");
+        }
+        catch (ArgumentException)
         {
             return BadRequest("Invalid access token/refresh token");
         }
 
-        string username = principal.Identity.Name;
+        var username = principal.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username))
+            return BadRequest("Invalid access token/refresh token");
 
-        var user = await _userManager.FindByNameAsync(username!);
+        var user = await _userManager.FindByNameAsync(username);
 
-        if (user == null || user.RefreshToken != refreshToken
+        if (user == null || user.RefreshToken != tokenModel.RefreshToken
                          || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
         {
             return BadRequest("Invalid access token/refresh token");
@@ -217,8 +252,17 @@ public class AuthController : ControllerBase
         var newRefreshToken = _tokenService.GenerateRefreshToken();
 
         user.RefreshToken = newRefreshToken;
+        _ = int.TryParse(_configuration["JWT:RefreshTokenValidityInMinutes"],
+            out var refreshTokenValidityInMinutes);
+        user.RefreshTokenExpiryTime = DateTime.UtcNow.AddMinutes(refreshTokenValidityInMinutes);
 
-        await _userManager.UpdateAsync(user);
+        var updateResult = await _userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            _logger.LogError("Failed to persist rotated refresh token for user {UserId}", user.Id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                "Could not refresh token");
+        }
 
         return new ObjectResult(new
         {
@@ -227,6 +271,11 @@ public class AuthController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Revoga o refresh token do usuário informado, encerrando a possibilidade de renovação.
+    /// </summary>
+    /// <param name="username">Nome de usuário cujo refresh token será revogado.</param>
+    /// <returns>Sem conteúdo quando a revogação é concluída.</returns>
     [Authorize]
     [HttpPost]
     [Route("revoke/{username}")]
