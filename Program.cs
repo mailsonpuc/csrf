@@ -1,9 +1,13 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using ApiCookieHttpOnly.Context;
+using ApiCookieHttpOnly.Filters;
 using ApiCookieHttpOnly.Models;
 using ApiCookieHttpOnly.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -16,9 +20,21 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddControllers().AddJsonOptions(
+builder.Services.AddControllers(options =>
+    options.Filters.AddService<CookieAntiforgeryFilter>()).AddJsonOptions(
     options =>
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
+builder.Services.AddScoped<CookieAntiforgeryFilter>();
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.Name = "ApiCookieHttpOnly.Antiforgery";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
+});
 
 // Configura o NSwag (OpenAPI + Swagger UI) com suporte a JWT (cadeado)
 builder.Services.AddOpenApiDocument(options =>
@@ -69,10 +85,34 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
 var secretKey = builder.Configuration["JWT:SecretKey"]
     ?? throw new ArgumentException("Invalid secret key!!");
 
+const string appCookieScheme = "AppCookie";
+const string smartAuthScheme = "SmartAuth";
+
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultAuthenticateScheme = smartAuthScheme;
+    options.DefaultChallengeScheme = smartAuthScheme;
+    options.DefaultSignInScheme = appCookieScheme;
+})
+.AddPolicyScheme(smartAuthScheme, "Bearer ou cookie", options =>
+{
+    options.ForwardDefaultSelector = context =>
+        context.Request.Headers.Authorization.ToString()
+            .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? JwtBearerDefaults.AuthenticationScheme
+            : appCookieScheme;
+})
+.AddCookie(appCookieScheme, options =>
+{
+    options.Cookie.Name = "ApiCookieHttpOnly.Auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(
+        builder.Configuration.GetValue<double?>("Cookie:ExpirationInMinutes") ?? 60);
+    options.SlidingExpiration = false;
 })
 .AddJwtBearer(options =>
 {
@@ -91,6 +131,15 @@ builder.Services.AddAuthentication(options =>
             Encoding.UTF8.GetBytes(secretKey))
     };
 });
+
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("SuperAdmin", policy => policy.RequireRole("User").RequireClaim("id", "mailson"));
+    options.AddPolicy("UserOnly", policy => policy.RequireRole("User"));
+});
+
 
 var app = builder.Build();
 

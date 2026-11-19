@@ -3,6 +3,8 @@ using System.Security.Claims;
 using ApiCookieHttpOnly.DTOS;
 using ApiCookieHttpOnly.Models;
 using ApiCookieHttpOnly.Services;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +19,7 @@ namespace ApiCookieHttpOnly.Controllers;
 [ApiController]
 public class AuthController : ControllerBase
 {
+    private const string CookieScheme = "AppCookie";
     private readonly ITokenService _tokenService;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
@@ -34,6 +37,18 @@ public class AuthController : ControllerBase
         _roleManager = roleManager;
         _configuration = configuration;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Emite o token antiforgery que deve ser enviado no cabeçalho X-CSRF-TOKEN
+    /// em operações realizadas com autenticação por cookie.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("antiforgery-token")]
+    public IActionResult GetAntiforgeryToken([FromServices] IAntiforgery antiforgery)
+    {
+        var tokens = antiforgery.GetAndStoreTokens(HttpContext);
+        return Ok(new { requestToken = tokens.RequestToken });
     }
 
     
@@ -117,10 +132,13 @@ public class AuthController : ControllerBase
     /// Autentica um usuário e emite um token de acesso JWT e um refresh token.
     /// </summary>
     /// <param name="model">Nome de usuário e senha.</param>
+    /// <param name="antiforgery">Serviço usado para criar o token CSRF associado à sessão.</param>
     /// <returns>Tokens e horário de expiração do token de acesso.</returns>
     [HttpPost]
     [Route("login")]
-    public async Task<IActionResult> Login([FromBody] LoginModel model)
+    public async Task<IActionResult> Login(
+        [FromBody] LoginModel model,
+        [FromServices] IAntiforgery antiforgery)
     {
         var user = await _userManager.FindByNameAsync(model.UserName!);
 
@@ -132,6 +150,7 @@ public class AuthController : ControllerBase
             {
                 new Claim(ClaimTypes.Name, user.UserName!),
                 new Claim(ClaimTypes.Email, user.Email!),
+                new Claim("id", user.UserName!),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             };
 
@@ -155,11 +174,26 @@ public class AuthController : ControllerBase
 
             await _userManager.UpdateAsync(user);
 
+            var cookieIdentity = new ClaimsIdentity(
+                authClaims, CookieScheme, ClaimTypes.Name, ClaimTypes.Role);
+            var cookieLifetimeMinutes = _configuration.GetValue<double?>(
+                "Cookie:ExpirationInMinutes") ?? 60;
+            await HttpContext.SignInAsync(CookieScheme,
+                new ClaimsPrincipal(cookieIdentity),
+                new AuthenticationProperties
+                {
+                    IsPersistent = true,
+                    ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(cookieLifetimeMinutes)
+                });
+            HttpContext.User = new ClaimsPrincipal(cookieIdentity);
+            var antiforgeryTokens = antiforgery.GetAndStoreTokens(HttpContext);
+
             return Ok(new
             {
                 Token = new JwtSecurityTokenHandler().WriteToken(token),
                 RefreshToken = refreshToken,
-                Expiration = token.ValidTo
+                Expiration = token.ValidTo,
+                CsrfToken = antiforgeryTokens.RequestToken
             });
         }
         return Unauthorized();
@@ -264,6 +298,18 @@ public class AuthController : ControllerBase
                 "Could not refresh token");
         }
 
+        var cookieIdentity = new ClaimsIdentity(
+            principal.Claims, CookieScheme, ClaimTypes.Name, ClaimTypes.Role);
+        var cookieLifetimeMinutes = _configuration.GetValue<double?>(
+            "Cookie:ExpirationInMinutes") ?? 60;
+        await HttpContext.SignInAsync(CookieScheme,
+            new ClaimsPrincipal(cookieIdentity),
+            new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(cookieLifetimeMinutes)
+            });
+
         return new ObjectResult(new
         {
             accessToken = new JwtSecurityTokenHandler().WriteToken(newAccessToken),
@@ -289,6 +335,29 @@ public class AuthController : ControllerBase
 
         await _userManager.UpdateAsync(user);
 
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Encerra a sessão atual e invalida o refresh token do usuário autenticado.
+    /// </summary>
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        var username = User.Identity?.Name;
+        if (!string.IsNullOrWhiteSpace(username))
+        {
+            var user = await _userManager.FindByNameAsync(username);
+            if (user is not null)
+            {
+                user.RefreshToken = null;
+                user.RefreshTokenExpiryTime = DateTime.UtcNow;
+                await _userManager.UpdateAsync(user);
+            }
+        }
+
+        await HttpContext.SignOutAsync(CookieScheme);
         return NoContent();
     }
 

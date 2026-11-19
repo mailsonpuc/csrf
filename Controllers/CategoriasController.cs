@@ -10,9 +10,10 @@ namespace ApiCookieHttpOnly.Controllers;
 
 [Route("api/[controller]")]
 [Authorize]
+
 [ApiController]
-public class CategoriasController: ControllerBase
-{ 
+public class CategoriasController : ControllerBase
+{
     //injetando o dbContext
     private readonly AppDbContext _Context;
 
@@ -22,6 +23,7 @@ public class CategoriasController: ControllerBase
     }
 
 
+    //[Authorize(Policy = "UserOnly")]
     [HttpGet("CategoriasComProdutos")]
     public async Task<ActionResult<IEnumerable<Categoria>>> GetCategoriaComProdutos()
     {
@@ -30,19 +32,20 @@ public class CategoriasController: ControllerBase
             .AsNoTracking()
             .ToListAsync();
     }
-    
-    
+
+
     [HttpGet]
+    //[Authorize(Policy = "UserOnly")]
     public ActionResult<IEnumerable<Categoria>> Get()
     {
         var categorias = _Context.Categorias.AsNoTracking().ToList();
-       
+
         if (categorias == null)
         {
             return NotFound("Categoias not found");
         }
         return categorias;
-        
+
         /*
         try
         {
@@ -53,11 +56,11 @@ public class CategoriasController: ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, "Ocorreu um erro inesperado");
         }
         */
-       
+
     }
 
 
-    [HttpGet("{id:guid}",  Name = "ObterCategoria")]
+    [HttpGet("{id:guid}", Name = "ObterCategoria")]
     public ActionResult<Categoria> Get(Guid id)
     {
         var categoria = _Context.Categorias.FirstOrDefault(p => p.CategoriaId == id);
@@ -68,11 +71,11 @@ public class CategoriasController: ControllerBase
 
         return categoria;
     }
-    
-    
-    
-    
-    
+
+
+
+
+
 
     /// <summary>
     /// Creates a Categoria.
@@ -99,15 +102,15 @@ public class CategoriasController: ControllerBase
     {
         if (categoria == null)
             return BadRequest();
-        
+
         _Context.Categorias.Add(categoria);
         _Context.SaveChanges();
-        return new CreatedAtRouteResult("ObterCategoria",  new { id = categoria.CategoriaId }, categoria);
+        return new CreatedAtRouteResult("ObterCategoria", new { id = categoria.CategoriaId }, categoria);
     }
-    
-    
-    
-    
+
+
+
+
     [HttpPut("{id:guid}", Name = "AtualizarCategoria")]
     public ActionResult Put(Guid id, Categoria categoria)
     {
@@ -115,15 +118,16 @@ public class CategoriasController: ControllerBase
         {
             return BadRequest();
         }
-        
+
         _Context.Entry(categoria).State = EntityState.Modified;
         _Context.SaveChanges();
         return Ok(categoria);
     }
 
-    
-    
-    
+
+
+
+    [Authorize(Policy = "AdminOnly")]
     [HttpDelete("{id:guid}", Name = "ExcluirCategoria")]
     public ActionResult Delete(Guid id)
     {
