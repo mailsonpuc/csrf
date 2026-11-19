@@ -5,9 +5,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 namespace ApiCookieHttpOnly.Filters;
 
 /// <summary>
-/// Valida o token antiforgery em operações semânticas quando a chamada usa cookies.
-/// Clientes que enviam explicitamente um token Bearer não dependem de cookies e não
-/// precisam enviar o token antiforgery.
+/// Valida o token antiforgery em operações semânticas autenticadas por cookie.
 /// </summary>
 public sealed class CookieAntiforgeryFilter(IAntiforgery antiforgery) : IAsyncAuthorizationFilter
 {
@@ -17,9 +15,7 @@ public sealed class CookieAntiforgeryFilter(IAntiforgery antiforgery) : IAsyncAu
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         var request = context.HttpContext.Request;
-        if (SafeMethods.Contains(request.Method)
-            || request.Headers.Authorization.ToString()
-                .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        if (SafeMethods.Contains(request.Method))
         {
             return;
         }

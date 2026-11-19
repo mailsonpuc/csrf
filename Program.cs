@@ -1,18 +1,13 @@
-using System.Text;
 using System.Text.Json.Serialization;
 using ApiCookieHttpOnly.Context;
 using ApiCookieHttpOnly.Filters;
 using ApiCookieHttpOnly.Models;
-using ApiCookieHttpOnly.Services;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using NSwag;
-using NSwag.Generation.Processors.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +20,8 @@ builder.Services.AddControllers(options =>
     options =>
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
 builder.Services.AddScoped<CookieAntiforgeryFilter>();
+
+
 builder.Services.AddAntiforgery(options =>
 {
     options.HeaderName = "X-CSRF-TOKEN";
@@ -36,7 +33,7 @@ builder.Services.AddAntiforgery(options =>
         : CookieSecurePolicy.Always;
 });
 
-// Configura o NSwag (OpenAPI + Swagger UI) com suporte a JWT (cadeado)
+// Configura o NSwag (OpenAPI + Swagger UI)
 builder.Services.AddOpenApiDocument(options =>
 {
     options.PostProcess = document =>
@@ -60,49 +57,21 @@ builder.Services.AddOpenApiDocument(options =>
         };
     };
 
-    options.AddSecurity("Bearer", new OpenApiSecurityScheme
-    {
-        Type = OpenApiSecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = OpenApiSecurityApiKeyLocation.Header,
-        Description = "Informe apenas o token JWT (não precisa digitar 'Bearer ' na frente)"
-    });
-
-    options.OperationProcessors.Add(
-        new AspNetCoreOperationSecurityScopeProcessor("Bearer")
-    );
 });
-
-builder.Services.AddScoped<ITokenService, TokenService>();
 
 // Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
     .AddDefaultTokenProviders();
 
-// Autenticação JWT
-var secretKey = builder.Configuration["JWT:SecretKey"]
-    ?? throw new ArgumentException("Invalid secret key!!");
-
 const string appCookieScheme = "AppCookie";
-const string smartAuthScheme = "SmartAuth";
 
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultAuthenticateScheme = smartAuthScheme;
-    options.DefaultChallengeScheme = smartAuthScheme;
+    options.DefaultAuthenticateScheme = appCookieScheme;
+    options.DefaultChallengeScheme = appCookieScheme;
     options.DefaultSignInScheme = appCookieScheme;
-})
-.AddPolicyScheme(smartAuthScheme, "Bearer ou cookie", options =>
-{
-    options.ForwardDefaultSelector = context =>
-        context.Request.Headers.Authorization.ToString()
-            .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            ? JwtBearerDefaults.AuthenticationScheme
-            : appCookieScheme;
-})
-.AddCookie(appCookieScheme, options =>
+}).AddCookie(appCookieScheme, options =>
 {
     options.Cookie.Name = "ApiCookieHttpOnly.Auth";
     options.Cookie.HttpOnly = true;
@@ -113,23 +82,6 @@ builder.Services.AddAuthentication(options =>
     options.ExpireTimeSpan = TimeSpan.FromMinutes(
         builder.Configuration.GetValue<double?>("Cookie:ExpirationInMinutes") ?? 60);
     options.SlidingExpiration = false;
-})
-.AddJwtBearer(options =>
-{
-    options.SaveToken = true;
-    options.RequireHttpsMetadata = false;
-    options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ClockSkew = TimeSpan.Zero,
-        ValidAudience = builder.Configuration["JWT:ValidAudience"],
-        ValidIssuer = builder.Configuration["JWT:ValidIssuer"],
-        IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(secretKey))
-    };
 });
 
 
